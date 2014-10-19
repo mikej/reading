@@ -36,14 +36,30 @@ class Goodreads
     })
   end
 
-  def get_books
+  def get_non_owned
+    get_books(sort: 'owned', order: 'a', stop_on_non_match: true) do |review_element|
+      review_element.at_xpath('./owned').text == '0'
+    end
+  end
+
+  def get_owned
+    get_books(sort: 'owned', order: 'd', stop_on_non_match: true) do |review_element|
+      review_element.at_xpath('./owned').text == '1'
+    end
+  end
+
+  def get_books(options = {})
     conn = Faraday.new(:url => 'https://www.goodreads.com')
     per_page = 100
     page = 1
 
     books = []
     loop do
-      response = conn.get("/review/list/#{@user_id}.xml?key=#{@api_key}&v=2&per_page=#{per_page}&page=#{page}")
+      url = "/review/list/#{@user_id}.xml?key=#{@api_key}&v=2&per_page=#{per_page}&page=#{page}"
+      url << "&sort=#{options[:sort]}" if options.has_key? :sort
+      url << "&order=#{options[:order]}" if options.has_key? :order
+      url << "&shelf=#{options[:shelf]}" if options.has_key? :shelf
+      response = conn.get(url)
       doc = Nokogiri::XML(response.body)
       review_elements = doc.xpath('//review')
       review_elements.each do |review_element|
@@ -53,12 +69,15 @@ class Goodreads
         shelf_elements = review_element.xpath('./shelves/shelf')
         shelves = shelf_elements.map { |shelf_element| shelf_element['name'] }
         owned = review_element.at_xpath('./owned').text == '1' ? true : false
-        books << Book.new(title, book_id, isbn, shelves, owned)
+        if !block_given? || yield(review_element)
+          books << Book.new(title, book_id, isbn, shelves, owned)
+        else
+          return books if options[:stop_on_non_match]
+        end
       end
       page = page + 1
-      break if review_elements.size != per_page
+      return books if review_elements.size != per_page
     end
-    books
   end
 
 end
