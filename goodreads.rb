@@ -1,6 +1,7 @@
 require 'faraday'
 require 'nokogiri'
 require 'yaml'
+require 'oauth'
 
 class Book
   attr_reader :title, :book_id, :isbn, :shelves
@@ -25,6 +26,14 @@ class Goodreads
     @api_key = config['api_key']
     @api_secret = config['api_secret']
     @user_id = config['user_id']
+    consumer = OAuth::Consumer.new(@api_key, @api_secret, :site => "https://www.goodreads.com")
+    @access_token = OAuth::AccessToken.new(consumer, config['access_token'], config['access_token_secret'])
+  end
+
+  def set_owned(access_token, book_id)
+    response = access_token.post('/owned_books.xml', {
+      'owned_book[book_id]' => book_id
+    })
   end
 
   def get_books
